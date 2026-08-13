@@ -1,0 +1,38 @@
+# iFinD Quant Data Platform
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Data (gitignored - too large)
+raw/
+
+# Runtime data (not committed)
+dataservice/data/usage.json
+
+# Config with secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SDK binary files (too large, install separately)
+dataservice/sdk/hqdatafeed
+dataservice/sdk/*.so
+dataservice/sdk/quote/
+dataservice/sdk/logs/
