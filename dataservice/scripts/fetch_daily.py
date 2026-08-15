@@ -373,7 +373,7 @@ def main():
         # ---- 汇总 ----
         remaining = max(0, WEEKLY_BUDGET - stats['week_used'])
         print("\n===== 任务完成汇总 =====")
-        print(f"标的: {stats['codes_processed']}/{stats['codes_total']} 只（成功更新 {stats['codes_updated']} 只）")
+        print(f"标的: {stats['codes_processed']}/{stats['codes_total']} 只")
         print(f"年份: {stats['years'][0]}-{stats['years'][-1]}" if stats['years'] else "年份: -")
         print(f"请求次数: {stats['requests']}")
         print(f"本次新增行数: {stats['rows']:,}")
@@ -387,7 +387,7 @@ def main():
         # ---- 推送 ----
         title = "📊 A股日线数据下载完成"
         lines = [
-            f"标的: {stats['codes_processed']}/{stats['codes_total']} 只（更新 {stats['codes_updated']} 只）",
+            f"标的: {stats['codes_processed']}/{stats['codes_total']} 只",
             f"年份: {stats['years'][0]}-{stats['years'][-1]}" if stats['years'] else "年份: -",
             f"本次新增: {stats['rows']:,} 行 / 消耗 {stats['used_vol']:,} 格",
             f"本周累计: {stats['week_used']:,} / {WEEKLY_BUDGET:,} 格（剩余 {remaining:,}）",
