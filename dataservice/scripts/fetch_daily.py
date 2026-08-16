@@ -53,7 +53,7 @@ HISTORY_START_YEAR = int(os.getenv('HISTORY_START_YEAR', str(datetime.now().year
 HISTORY_END_YEAR = int(os.getenv('HISTORY_END_YEAR', str(datetime.now().year)))
 
 # 清单文件（逗号分隔，放在 data/lists/ 目录下）
-STOCK_LISTS = os.getenv('STOCK_LISTS_DAILY', os.getenv('STOCK_LISTS', 'hs300_list.csv'))
+STOCK_LISTS = os.getenv('STOCK_LISTS_DAILY', os.getenv('STOCK_LISTS', 'hs300_list_cn.csv'))
 
 # THS_HD 指标（分号分隔）
 INDICATORS = 'open;high;low;close;volume;amount;preClose;turn'
