@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-批量下载沪深300成分股的1分钟K线数据（fetch_1m）
+批量下载ETF的1分钟K线数据（fetch_1m）
 
 核心策略：
 - 拉取：按月分段拉取，单次请求周期不超过1个月（start=月初, end=月末）
@@ -54,7 +54,7 @@ HISTORY_END_YEAR = int(os.getenv('HISTORY_END_YEAR', str(datetime.now().year)))
 
 # 清单文件（逗号分隔，放在 data/lists/ 目录下）
 # 例如：hs300_list.csv,zz500_list.csv
-STOCK_LISTS = os.getenv('STOCK_LISTS_1M', os.getenv('STOCK_LISTS', 'hs300_list_cn.csv'))
+STOCK_LISTS = os.getenv('STOCK_LISTS_1M', os.getenv('STOCK_LISTS', 'list_etf.csv'))
 
 # THS_HF 指标（分号分隔）+ 固定 jsonparam（单参数，不能用分号拼接）
 INDICATORS = 'open;high;low;close;volume;amount'
