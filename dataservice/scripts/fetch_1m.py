@@ -273,8 +273,7 @@ def main():
         return
 
     now = datetime.now()
-    yesterday = now - timedelta(days=1)
-    yesterday_hhmm = yesterday.strftime('%Y-%m-%d') + ' 15:00:00'  # 当年 end（A股收盘后）
+    today_hhmm = now.strftime('%Y-%m-%d') + ' 15:00:00'  # 当年 end（A股收盘后）
 
     # ---- 2. 加载本周已用格数（跨周自动重置） ----
     week_start, week_used = load_weekly_usage()
@@ -357,8 +356,8 @@ def main():
                     month_end = get_month_end(year, month)
 
                     if year == now.year and month == current_month:
-                        # 当前月：拉到昨日 15:00（A股收盘后）
-                        end = yesterday_hhmm
+                        # 当前月：拉到当日 15:00（A股收盘后）
+                        end = today_hhmm
                     else:
                         # 历史月份：拉满当月 15:00
                         end = f'{year}-{month:02d}-{month_end} 15:00:00'
