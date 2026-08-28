@@ -58,7 +58,8 @@ STOCK_LISTS = os.getenv('STOCK_LISTS_1M', os.getenv('STOCK_LISTS', 'list_etf.csv
 
 # THS_HF 指标（分号分隔）+ 固定 jsonparam（单参数，不能用分号拼接）
 INDICATORS = 'open;high;low;close;volume;amount'
-HF_JSONPARAM = f'Fill:{FILL}'
+CPS = os.getenv('CPS', 'backward1')
+HF_JSONPARAM = f'Fill:{FILL},CPS:{CPS}'
 
 # 本周用量记录文件
 USAGE_FILE = PROJECT_ROOT / 'data' / 'usage.json'
