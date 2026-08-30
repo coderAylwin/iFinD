@@ -47,12 +47,12 @@ import pandas as pd
 # ======================================================================
 IFIND_USER = os.getenv('IFIND_USER', '')
 IFIND_PASS = os.getenv('IFIND_PASS', '')
-DATA_ROOT = str(WORKSPACE_ROOT / 'raw/shares')
+DATA_ROOT = os.getenv('SHARES_DATA_ROOT', str(WORKSPACE_ROOT / 'raw/shares'))
 WEEKLY_BUDGET = int(os.getenv('WEEKLY_BUDGET', '150000000'))
 
 HISTORY_START_YEAR = int(os.getenv('HISTORY_START_YEAR', '2020'))
 HISTORY_END_YEAR = int(os.getenv('HISTORY_END_YEAR', str(datetime.now().year)))
-STOCK_LISTS = os.getenv('STOCK_LISTS_DAILY', 'zz_all_list_cn.csv')
+STOCK_LISTS = os.getenv('STOCK_LISTS_SHARES', os.getenv('STOCK_LISTS_DAILY', 'zz_all_list_cn.csv'))
 
 # THS_DS 股本指标
 INDICATORS = 'ths_free_float_shares_stock;ths_total_shares_stock;ths_float_ashare_stock'
