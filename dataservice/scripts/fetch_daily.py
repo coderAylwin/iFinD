@@ -56,7 +56,7 @@ HISTORY_END_YEAR = int(os.getenv('HISTORY_END_YEAR', str(datetime.now().year)))
 STOCK_LISTS = os.getenv('STOCK_LISTS_DAILY', os.getenv('STOCK_LISTS', 'hs300_list_cn.csv'))
 
 # THS_HD 指标（分号分隔）
-INDICATORS = 'open;high;low;close;volume;amount;preClose;turn'
+INDICATORS = 'open;high;low;close;volume;amt'
 
 # 本周用量记录文件
 USAGE_FILE = PROJECT_ROOT / 'data' / 'usage_daily.json'
@@ -182,13 +182,18 @@ def append_by_year(code, market, df, stats):
 
     # 按年份分组（date 列前4位为年份）
     df = df.copy()
-    df['__year'] = df['date'].astype(str).str[:4]
+    # THS_HD 返回的时间列名为 'time' 而非 'date'
+    time_col = 'time' if 'time' in df.columns else 'date'
+    df['__year'] = df[time_col].astype(str).str[:4]
     for year, group in df.groupby('__year'):
         year_dir = os.path.join(DATA_ROOT, market, str(year))
         os.makedirs(year_dir, exist_ok=True)
         filepath = os.path.join(year_dir, f'{code}.csv')
         file_exists = os.path.exists(filepath) and os.path.getsize(filepath) > 0
+        # 标准化 time/date 列名为 date
         drop = group.drop(columns=['__year'])
+        if 'time' in drop.columns:
+            drop = drop.rename(columns={'time': 'date'})
         drop.to_csv(filepath, mode='a', header=not file_exists, index=False)
         stats['rows'] += len(drop)
         print(f"    → 写入 {year} 年文件: {os.path.basename(filepath)} (+{len(drop)} 行)")
@@ -221,6 +226,35 @@ def fetch_month(code, market, year, month, start, end, last_date, used_vol, week
     except ValueError:
         pass
 
+def fetch_year(code, market, year, last_date, used_vol, week_start, week_start_used, stats, now):
+    """拉取单个 code 某整年日线，结合断点续传"""
+    start = f'{year}-01-01'
+    end = f'{year}-12-31'
+
+    # 当年：只拉到昨日
+    if year == now.year:
+        end = (now - timedelta(days=1)).strftime('%Y-%m-%d')
+
+    # 断点续传
+    if last_date is not None:
+        try:
+            ld = datetime.strptime(str(last_date)[:10], '%Y-%m-%d')
+            s = datetime.strptime(start, '%Y-%m-%d')
+            if ld >= s:
+                # 从本地最后日期 +1 天开始
+                start = (ld + timedelta(days=1)).strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+
+    # 若开始时间已超过 end，跳过
+    try:
+        s = datetime.strptime(str(start)[:10], '%Y-%m-%d')
+        e = datetime.strptime(str(end)[:10], '%Y-%m-%d')
+        if s > e:
+            return used_vol
+    except ValueError:
+        pass
+
     # 调用 THS_HD 拉取日线（带重试）
     data = None
     retries = 3
@@ -228,11 +262,11 @@ def fetch_month(code, market, year, month, start, end, last_date, used_vol, week
         data = THS_HD(code, INDICATORS, '', start, end)
         if data.errorcode == 0:
             break
-        print(f"  {code} [{year}-{month:02d}] 拉取失败(第{attempt}次): {data.errmsg}，重试中...")
+        print(f"  {code} [{year}] 拉取失败(第{attempt}次): {data.errmsg}，重试中...")
         time.sleep(2 * attempt)
 
     if data is None or data.errorcode != 0:
-        print(f"  错误：{code} {year}-{month:02d} 重试{retries}次仍失败: {data.errmsg if data else '未知'}")
+        print(f"  错误：{code} {year} 重试{retries}次仍失败: {data.errmsg if data else '未知'}")
         stats['errors'] += 1
         return used_vol
 
@@ -248,10 +282,10 @@ def fetch_month(code, market, year, month, start, end, last_date, used_vol, week
     df = data.data
     if df is not None and not df.empty:
         rows = len(df)
-        print(f"  {code} [{year}-{month:02d}] 拉取 {start} → {end}，{rows} 行，本次格数 {vol}")
+        print(f"  {code} [{year}] 拉取 {start} → {end}，{rows} 行，本次格数 {vol}")
         append_by_year(code, market, df, stats)
     else:
-        print(f"  {code} [{year}-{month:02d}] 无新数据（{start} → {end}）")
+        print(f"  {code} [{year}] 无新数据（{start} → {end}）")
         stats['empty_responses'] += 1
 
     return used_vol
@@ -335,37 +369,20 @@ def main():
                 filepath = os.path.join(year_dir, f'{code}.csv')
                 last_date = read_last_timestamp(filepath)
 
-                for month in range(1, 13):
-                    if budget_exceeded:
-                        break
+                # 整年一次拉取，结合断点续传
+                stats['used_vol'] = fetch_year(
+                    code, market, year, last_date,
+                    stats['used_vol'], week_start, week_used, stats, now
+                )
 
-                    # 未来月份不拉
-                    if year == now.year and month > current_month:
-                        break
+                stats['week_used'] = week_used + stats['used_vol']
 
-                    start = f'{year}-{month:02d}-01'
-                    month_end = get_month_end(year, month)
-
-                    if year == now.year and month == current_month:
-                        # 当前月：拉到昨日
-                        end = yesterday_str
-                    else:
-                        # 历史月份：拉满当月
-                        end = f'{year}-{month:02d}-{month_end}'
-
-                    stats['used_vol'] = fetch_month(
-                        code, market, year, month, start, end, last_date,
-                        stats['used_vol'], week_start, week_used, stats
-                    )
-
-                    stats['week_used'] = week_used + stats['used_vol']
-
-                    # ---- 预算控制 ----
-                    if stats['week_used'] >= WEEKLY_BUDGET:
-                        print(f"\n⚠️ 预算超限：本周已用 {stats['week_used']:,} 格数 / 上限 {WEEKLY_BUDGET:,}，停止本次任务")
-                        stats['budget_hit'] = True
-                        budget_exceeded = True
-                        break
+                # ---- 预算控制 ----
+                if stats['week_used'] >= WEEKLY_BUDGET:
+                    print(f"\n⚠️ 预算超限：本周已用 {stats['week_used']:,} 格数 / 上限 {WEEKLY_BUDGET:,}，停止本次任务")
+                    stats['budget_hit'] = True
+                    budget_exceeded = True
+                    break
 
         # 保存本周用量
         save_weekly_usage(week_start, stats['week_used'])
