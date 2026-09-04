@@ -17,6 +17,20 @@ raw/
 
 # Runtime data (not committed)
 dataservice/data/usage.json
+dataservice/data/usage_daily.json
+dataservice/data/usage_shares.json
+
+# Local SDK config / per-user passport
+dataservice/sdk/users/Passport/qsszkj001/
+
+# iFinD raw data files (large, generated)
+dataservice/000985_CSI_*.csv
+
+# Ths data fail records
+dataservice/data/ths_ds/
+
+# Temp / cache
+tmp/
 
 # Config with secrets
 .env
