@@ -46,8 +46,7 @@ LISTS_DIR = PROJECT_ROOT / 'data' / 'lists'
 DATA_ROOT = WORKSPACE_ROOT / 'raw' / 'stock_data'
 FAIL_DIR = PROJECT_ROOT / 'data' / 'ths_ds'
 
-START_YEAR = int(os.getenv('HISTORY_START_YEAR', '2012'))
-# 每年截面日（非交易日已换成相邻交易日）
+# 每年截面日（非交易日已换成相邻交易日）；年份只看这张表，不读 HISTORY_START_YEAR
 SNAPSHOT_DATES = {
     2012: '2012-06-29',
     2013: '2013-07-01',
@@ -106,12 +105,10 @@ SKIP_SUFFIXES = ('.BJ',)  # 北交所本地已齐全，不再拉取
 
 
 def snapshot_years(now=None):
-    """只拉日期表里、且已经到了的年份。"""
+    """按 SNAPSHOT_DATES 拉已经到了的截面日，不受 HISTORY_START_YEAR 影响。"""
     now = now or datetime.now()
     years = []
     for year, day in SNAPSHOT_DATES.items():
-        if year < START_YEAR:
-            continue
         if datetime.strptime(day, '%Y-%m-%d').date() <= now.date():
             years.append(year)
     return years
