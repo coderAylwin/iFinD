@@ -47,21 +47,30 @@ FILL = os.getenv('FILL', 'Original')
 CPS = os.getenv('CPS', 'backward1')
 
 INDICATORS = 'open;high;low;close;volume;amount'
-HF_JSONPARAM = f'Fill:{FILL},CPS:{CPS}'
+
+# ---- 各市场配置 ----
+MARKET_CFG = {
+    'cn': {'cps': 'backward2', 'open': '09:15:00', 'close': '15:00:00'},
+    'hk': {'cps': 'backward',  'open': '09:30:00', 'close': '16:00:00'},
+}
 
 # ---- 固定参数：时间范围 ----
 START_DATE = '2024-01-01'
 END_DATE = '2026-08-01'
 
-# ---- 标的列表（A股，市场代码统一用 cn） ----
-STOCK_CODES = [
-    '601899.SH', '601600.SH', '600900.SH', '600938.SH', '603993.SH',
-    '000807.SZ', '000933.SZ', '002532.SZ', '601225.SH',
-    '000651.SZ', '000333.SZ', '600690.SH', '605499.SH',
-    '600066.SH', '000951.SZ',
+# ---- 标的列表 (code, market) ----
+STOCKS = [
+    # A 股
+    ('601899.SH', 'cn'), ('601600.SH', 'cn'), ('600900.SH', 'cn'),
+    ('600938.SH', 'cn'), ('603993.SH', 'cn'),
+    ('000807.SZ', 'cn'), ('000933.SZ', 'cn'), ('002532.SZ', 'cn'),
+    ('601225.SH', 'cn'),
+    ('000651.SZ', 'cn'), ('000333.SZ', 'cn'), ('600690.SH', 'cn'),
+    ('605499.SH', 'cn'),
+    ('600066.SH', 'cn'), ('000951.SZ', 'cn'),
+    # 港股
+    ('0700.HK', 'hk'), ('1171.HK', 'hk'),
 ]
-
-MARKET = 'cn'
 
 
 # ======================================================================
@@ -90,7 +99,7 @@ def read_last_timestamp(csv_path):
         return None
 
 
-def append_by_year(code, df):
+def append_by_year(code, df, data_root_market):
     """
     将拉取的 DataFrame 按年份拆分，追加写入对应年份文件。
     """
@@ -100,7 +109,7 @@ def append_by_year(code, df):
     df = df.copy()
     df['__year'] = df['time'].astype(str).str[:4]
     for year, group in df.groupby('__year'):
-        year_dir = os.path.join(DATA_ROOT, MARKET, str(year))
+        year_dir = os.path.join(data_root_market, str(year))
         os.makedirs(year_dir, exist_ok=True)
         filepath = os.path.join(year_dir, f'{code}.csv')
         file_exists = os.path.exists(filepath) and os.path.getsize(filepath) > 0
@@ -109,7 +118,7 @@ def append_by_year(code, df):
         print(f"    → 写入 {year} 年文件: {os.path.basename(filepath)} (+{len(drop)} 行)")
 
 
-def fetch_month(code, year, month, start, end, last_ts, stats):
+def fetch_month(code, year, month, start, end, last_ts, stats, hf_jsonparam, data_root_market):
     """
     拉取单个 code 某个月的1分钟K线（[start, end] 在一个月内），
     结合断点续传：若 last_ts 已覆盖 start，则从 last_ts 之后续拉。
@@ -138,7 +147,7 @@ def fetch_month(code, year, month, start, end, last_ts, stats):
     data = None
     retries = 3
     for attempt in range(1, retries + 1):
-        data = THS_HF(code, INDICATORS, HF_JSONPARAM, start, end)
+        data = THS_HF(code, INDICATORS, hf_jsonparam, start, end)
         if data.errorcode == 0:
             break
         print(f"  {code} [{year}-{month:02d}] 拉取失败(第{attempt}次): {data.errmsg}，重试中...")
@@ -157,7 +166,7 @@ def fetch_month(code, year, month, start, end, last_ts, stats):
     if df is not None and not df.empty:
         rows = len(df)
         print(f"  {code} [{year}-{month:02d}] 拉取 {start} → {end}，{rows} 行，本次格数 {vol}")
-        append_by_year(code, df)
+        append_by_year(code, df, data_root_market)
         stats['rows'] += rows
         stats['codes_updated'] += 1
     else:
@@ -171,9 +180,18 @@ def main():
         print('错误：请在 IFIND_DATA/.env 中配置 IFIND_USER 和 IFIND_PASS')
         return
 
+    hf_params = {
+        m: f'Fill:{FILL},CPS:{cfg["cps"]}'
+        for m, cfg in MARKET_CFG.items()
+    }
+    market_open_close = {
+        m: (cfg['open'], cfg['close'])
+        for m, cfg in MARKET_CFG.items()
+    }
+
     # ---- 2. 初始化统计 ----
     stats = {
-        'codes_total': len(STOCK_CODES),
+        'codes_total': len(STOCKS),
         'codes_processed': 0,
         'codes_updated': 0,
         'requests': 0,
@@ -183,12 +201,16 @@ def main():
         'used_vol': 0,
     }
 
+    market_dirs = {m: f'{DATA_ROOT}/{m}' for m in MARKET_CFG}
+
     print(f"===== 指定股票1分钟K线下载 =====\n")
     print(f"时间范围: {START_DATE} → {END_DATE}")
-    print(f"数据目录: {DATA_ROOT}/{MARKET}/")
-    print(f"标的数量: {len(STOCK_CODES)} 只")
-    print(f"请求配置: Fill={FILL}, CPS={CPS}")
-    print(f"标的列表: {', '.join(STOCK_CODES)}")
+    print(f"数据目录: cn 下 A股, hk 下港股")
+    print(f"标的数量: {len(STOCKS)} 只")
+    print(f"请求配置: A股 CPS=backward2, 港股 CPS=backward, Fill={FILL}")
+    for m in MARKET_CFG:
+        codes_group = [c for c, mk in STOCKS if mk == m]
+        print(f"  {m}: {', '.join(codes_group)}")
     print()
 
     # ---- 3. 解析时间范围，生成月份列表 ----
@@ -212,25 +234,28 @@ def main():
     print("登录成功\n")
 
     try:
-        for i, code in enumerate(STOCK_CODES, 1):
+        for i, (code, market) in enumerate(STOCKS, 1):
             stats['codes_processed'] += 1
-            print(f"[{i}/{len(STOCK_CODES)}] 处理 {code}")
+            data_root_market = market_dirs[market]
+            hf_jsonparam = hf_params[market]
+            open_time, close_time = market_open_close[market]
+            print(f"[{i}/{len(STOCKS)}] 处理 {code} (市场={market}, 开盘{open_time}收盘{close_time})")
 
             for year, month in months:
-                start = f'{year}-{month:02d}-01 09:15:00'
+                start = f'{year}-{month:02d}-01 {open_time}'
                 month_end = get_month_end(year, month)
 
                 if year == end_dt.year and month == end_dt.month:
-                    end = f'{year}-{month:02d}-{end_dt.day} 15:00:00'
+                    end = f'{year}-{month:02d}-{end_dt.day} {close_time}'
                 else:
-                    end = f'{year}-{month:02d}-{month_end} 15:00:00'
+                    end = f'{year}-{month:02d}-{month_end} {close_time}'
 
                 # 读断点续传时间戳
-                year_dir = os.path.join(DATA_ROOT, MARKET, str(year))
+                year_dir = os.path.join(data_root_market, str(year))
                 filepath = os.path.join(year_dir, f'{code}.csv')
                 last_ts = read_last_timestamp(filepath)
 
-                fetch_month(code, year, month, start, end, last_ts, stats)
+                fetch_month(code, year, month, start, end, last_ts, stats, hf_jsonparam, data_root_market)
 
             print(f"  [{code}] 已完成所有月份")
             print()
