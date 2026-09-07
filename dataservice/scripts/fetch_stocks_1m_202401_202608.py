@@ -56,7 +56,7 @@ MARKET_CFG = {
 
 # ---- 固定参数：时间范围 ----
 START_DATE = '2024-01-01'
-END_DATE = '2026-08-01'
+END_DATE = '2026-08-31'
 
 # ---- 标的列表 (code, market) ----
 STOCKS = [
