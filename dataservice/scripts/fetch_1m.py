@@ -58,8 +58,12 @@ STOCK_LISTS = os.getenv('STOCK_LISTS_1M', os.getenv('STOCK_LISTS', 'list_etf.csv
 
 # THS_HF 指标（分号分隔）+ 固定 jsonparam（单参数，不能用分号拼接）
 INDICATORS = 'open;high;low;close;volume;amount'
-CPS = os.getenv('CPS', 'backward1')
-HF_JSONPARAM = f'Fill:{FILL},CPS:{CPS}'
+CPS = os.getenv('CPS', 'backward2')
+
+
+def hf_jsonparam(cps):
+    """单只股票的 jsonparam：CPS 优先用清单 backward_cps。"""
+    return f'Fill:{FILL},CPS:{cps}'
 
 # 本周用量记录文件
 USAGE_FILE = PROJECT_ROOT / 'data' / 'usage.json'
@@ -117,16 +121,18 @@ def guess_market_from_listname(list_name):
 
 
 def load_stock_lists():
-    """从 data/lists/ 目录读取 STOCK_LISTS 配置的清单文件，返回 (code, market) 列表（去重、保序）
+    """从 data/lists/ 目录读取 STOCK_LISTS 配置的清单文件，返回 (code, market, cps) 列表（去重、保序）
 
     市场目录由清单文件名后缀决定：
       hs300_list_cn.csv   → market='cn'
       etf_list_etf.csv    → market='etf'
       us_list_us.csv      → market='us'
       hs300_list.csv（无后缀）→ market='cn'
+
+    CPS：清单有 backward_cps 且非空时用该值，否则回退环境变量 CPS。
     """
     lists_dir = PROJECT_ROOT / 'data' / 'lists'
-    items = []  # [(code, market), ...]
+    items = []  # [(code, market, cps), ...]
     seen = set()
     for name in [x.strip() for x in STOCK_LISTS.split(',') if x.strip()]:
         path = lists_dir / name
@@ -137,12 +143,21 @@ def load_stock_lists():
             market = guess_market_from_listname(name)
             df = pd.read_csv(path)
             col = 'thscode' if 'thscode' in df.columns else df.columns[0]
-            for c in df[col].dropna():
-                c = str(c).strip()
+            has_cps = 'backward_cps' in df.columns
+            for _, row in df.iterrows():
+                if pd.isna(row[col]):
+                    continue
+                c = str(row[col]).strip()
                 key = (c, market)
-                if key not in seen:
-                    seen.add(key)
-                    items.append(key)
+                if key in seen:
+                    continue
+                seen.add(key)
+                cps = CPS
+                if has_cps and not pd.isna(row['backward_cps']):
+                    val = str(row['backward_cps']).strip()
+                    if val:
+                        cps = val
+                items.append((c, market, cps))
             print(f"  已加载清单: {name} (市场={market}, {len(df)} 只)")
         except Exception as e:
             print(f"  警告：读取清单 {name} 失败: {e}")
@@ -198,7 +213,7 @@ def append_by_year(code, market, df, used_vol, stats):
     return used_vol
 
 
-def fetch_month(code, market, year, month, start, end, last_ts, used_vol, week_start, week_start_used, stats):
+def fetch_month(code, market, year, month, start, end, last_ts, used_vol, week_start, week_start_used, stats, cps):
     """
     拉取单个 code 某个月的 1分钟K线（[start, end] 在一个月内），
     结合断点续传：若 last_ts 已覆盖 start，则从 last_ts 之后续拉。
@@ -234,7 +249,7 @@ def fetch_month(code, market, year, month, start, end, last_ts, used_vol, week_s
     data = None
     retries = 3  # 最多重试 3 次
     for attempt in range(1, retries + 1):
-        data = THS_HF(code, INDICATORS, HF_JSONPARAM, start, end)
+        data = THS_HF(code, INDICATORS, hf_jsonparam(cps), start, end)
         if data.errorcode == 0:
             break
         print(f"  {code} [{year}-{month:02d}] 拉取失败(第{attempt}次): {data.errmsg}，重试中...")
@@ -293,12 +308,12 @@ def main():
         'budget_hit': False,
     }
 
-    print(f"===== 沪深300 1分钟K线增量下载 =====\n")
+    print(f"===== 1分钟K线增量下载 =====\n")
     print(f"数据目录: {DATA_ROOT}")
     print(f"年份范围: {HISTORY_START_YEAR} - {HISTORY_END_YEAR}")
     print(f"每周预算: {WEEKLY_BUDGET:,} 格数")
     print(f"本周起算: {week_start} 已用 {week_used:,} 格")
-    print(f"请求配置: Fill={FILL}")
+    print(f"请求配置: Fill={FILL}  默认CPS={CPS}（清单 backward_cps 优先）")
     print()
 
     # ---- 4. 登录 iFinD ----
@@ -317,7 +332,7 @@ def main():
         stats['codes_total'] = len(codes)
         # 统计各市场数量
         market_counts = {}
-        for _, m in codes:
+        for _, m, _ in codes:
             market_counts[m] = market_counts.get(m, 0) + 1
         market_info = ', '.join(f'{m}={n}只' for m, n in sorted(market_counts.items()))
         print(f"读取到标的: {len(codes)} 只（清单: {STOCK_LISTS}）→ {market_info}\n")
@@ -328,12 +343,12 @@ def main():
         budget_exceeded = False
         current_month = now.month
 
-        for i, (code, market) in enumerate(codes, 1):
+        for i, (code, market, cps) in enumerate(codes, 1):
             if budget_exceeded:
                 break
 
             stats['codes_processed'] += 1
-            print(f"[{i}/{len(codes)}] 处理 {code} (市场={market})")
+            print(f"[{i}/{len(codes)}] 处理 {code} (市场={market}, CPS={cps})")
 
             for year in years:
                 if budget_exceeded:
@@ -364,7 +379,7 @@ def main():
 
                     stats['used_vol'] = fetch_month(
                         code, market, year, month, start, end, last_ts,
-                        stats['used_vol'], week_start, week_used, stats
+                        stats['used_vol'], week_start, week_used, stats, cps
                     )
 
                     # 同步累加本周用量（fetch_month 内部已更新 stats['week_used']）
