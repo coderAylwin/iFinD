@@ -58,7 +58,7 @@ STOCK_LISTS = os.getenv('STOCK_LISTS_1M', os.getenv('STOCK_LISTS', 'list_etf.csv
 
 # THS_HF 指标（分号分隔）+ 固定 jsonparam（单参数，不能用分号拼接）
 INDICATORS = 'open;high;low;close;volume;amount'
-CPS = os.getenv('CPS', 'backward2')
+CPS = os.getenv('CPS', 'backward4')
 
 
 def hf_jsonparam(cps):
@@ -288,7 +288,6 @@ def main():
         return
 
     now = datetime.now()
-    today_hhmm = now.strftime('%Y-%m-%d') + ' 15:00:00'  # 当年 end（A股收盘后）
 
     # ---- 2. 加载本周已用格数（跨周自动重置） ----
     week_start, week_used = load_weekly_usage()
@@ -348,7 +347,10 @@ def main():
                 break
 
             stats['codes_processed'] += 1
-            print(f"[{i}/{len(codes)}] 处理 {code} (市场={market}, CPS={cps})")
+            is_hk = str(code).upper().endswith('.HK')
+            open_t = '09:30:00' if is_hk else '09:15:00'
+            close_t = '16:00:00' if is_hk else '15:00:00'
+            print(f"[{i}/{len(codes)}] 处理 {code} (市场={market}, CPS={cps}, {open_t}–{close_t})")
 
             for year in years:
                 if budget_exceeded:
@@ -367,15 +369,13 @@ def main():
                     if year == now.year and month > current_month:
                         break
 
-                    start = f'{year}-{month:02d}-01 09:15:00'
+                    start = f'{year}-{month:02d}-01 {open_t}'
                     month_end = get_month_end(year, month)
 
                     if year == now.year and month == current_month:
-                        # 当前月：拉到当日 15:00（A股收盘后）
-                        end = today_hhmm
+                        end = now.strftime('%Y-%m-%d') + f' {close_t}'
                     else:
-                        # 历史月份：拉满当月 15:00
-                        end = f'{year}-{month:02d}-{month_end} 15:00:00'
+                        end = f'{year}-{month:02d}-{month_end} {close_t}'
 
                     stats['used_vol'] = fetch_month(
                         code, market, year, month, start, end, last_ts,
