@@ -21,7 +21,7 @@ dataservice/data/usage_daily.json
 dataservice/data/usage_shares.json
 
 # Local SDK config / per-user passport
-dataservice/sdk/users/Passport/qsszkj001/
+dataservice/sdk/users/Passport/
 
 # iFinD raw data files (large, generated)
 dataservice/000985_CSI_*.csv
@@ -50,3 +50,6 @@ dataservice/sdk/hqdatafeed
 dataservice/sdk/*.so
 dataservice/sdk/quote/
 dataservice/sdk/logs/
+dataservice/sdk/etc/LocalFileUpdatedInfo.xml
+dataservice/sdk/etc/XlsThsFunc.xml
+dataservice/sdk/etc/stock_linkage.xml
