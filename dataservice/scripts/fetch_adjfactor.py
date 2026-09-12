@@ -79,6 +79,17 @@ def year_bounds(year, today):
     return start, end
 
 
+def has_weekday(start, end):
+    """区间内是否包含周一到周五（无交易日历时，用来跳过纯周末空请求）。"""
+    d = datetime.strptime(start, '%Y-%m-%d')
+    e = datetime.strptime(end, '%Y-%m-%d')
+    while d <= e:
+        if d.weekday() < 5:
+            return True
+        d += timedelta(days=1)
+    return False
+
+
 def load_stock_lists():
     items = []
     seen = set()
@@ -241,6 +252,8 @@ def fetch_year(year, items, fail_list, today):
             continue
         if start > year_end:
             continue
+        if not has_weekday(start, year_end):
+            continue
         if start == year_start:
             full_year.append((code, market))
         else:
@@ -282,17 +295,33 @@ def fetch_year(year, items, fail_list, today):
 
     if resume:
         print(f"  [{year}] 断点续传 {len(resume)} 只")
-        for i, (code, market, start) in enumerate(resume, 1):
-            print(f"    [{i}/{len(resume)}] {code} {start}→{year_end} ...", end='', flush=True)
-            n_c, n_r = fetch_one_range(code, market, year, start, year_end, fail_list)
-            if n_c == 0:
-                empty += 1
-                print(" 无数据")
-            else:
+        groups = {}
+        for code, market, start in resume:
+            groups.setdefault((market, start), []).append(code)
+        for (market, start), codes in groups.items():
+            total_batches = (len(codes) - 1) // BATCH_SIZE + 1
+            for batch_i, batch in enumerate(chunks(codes, BATCH_SIZE), 1):
+                print(f"  [{year}/{market}] 续传批 {batch_i}/{total_batches} "
+                      f"{batch[0]}..{batch[-1]} ({len(batch)}只) {start}→{year_end} ...",
+                      end='', flush=True)
+                df, err = fetch_ds(batch, start, year_end)
+                if err is not None:
+                    print(" ✗ 批量失败，改单只")
+                    for code in batch:
+                        n_c, n_r = fetch_one_range(code, market, year, start, year_end, fail_list)
+                        if n_c == 0:
+                            empty += 1
+                        else:
+                            wrote_codes += n_c
+                            wrote_rows += n_r
+                    time.sleep(REQ_INTERVAL)
+                    continue
+                n_c, n_r = save_df(df, batch, market, year)
+                empty += len(batch) - n_c
                 wrote_codes += n_c
                 wrote_rows += n_r
-                print(f" ✓ +{n_r} 行")
-            time.sleep(REQ_INTERVAL)
+                print(f" ✓ 写入 {n_c} 只 / {n_r} 行 / 无数据 {len(batch) - n_c}")
+                time.sleep(REQ_INTERVAL)
 
     skipped = len(items) - len(full_year) - len(resume)
     print(f"  [{year}] 完成：新增 {wrote_codes} 只 / {wrote_rows} 行，"
